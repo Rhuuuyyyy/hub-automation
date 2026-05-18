@@ -724,20 +724,30 @@ class ClienteGLPI:
             logger.warning("Ticket #%d: erro ao buscar ticket completo: %s", ticket_id, exc)
 
         try:
-            followups = self._get(
-                f"{self.base_url}/Assistance/Ticket/{ticket_id}/Timeline/ITILFollowup"
+            resp = self._session.get(
+                f"{self.base_url}/Assistance/Ticket/{ticket_id}/Timeline/ITILFollowup",
+                timeout=HTTP_TIMEOUT,
             )
-            if isinstance(followups, list):
-                for fu in followups:
-                    item_data = fu.get("item") if isinstance(fu.get("item"), dict) else fu
-                    for campo in ("content", "name", "description"):
-                        result = _extrair_data_inicio(item_data.get(campo, "") or "")
-                        if result:
-                            return result
+            if resp.status_code == 401:
+                self._renovar_sessao()
+                resp = self._session.get(
+                    f"{self.base_url}/Assistance/Ticket/{ticket_id}/Timeline/ITILFollowup",
+                    timeout=HTTP_TIMEOUT,
+                )
+            if resp.ok and resp.text.strip():
+                followups = resp.json()
+                if isinstance(followups, list):
+                    for fu in followups:
+                        item_data = fu.get("item") if isinstance(fu.get("item"), dict) else fu
+                        for campo in ("content", "name", "description"):
+                            result = _extrair_data_inicio(item_data.get(campo, "") or "")
+                            if result:
+                                return result
+            # 404 = ticket sem followups — comportamento normal, sem log
         except Exception as exc:
             logger.warning("Ticket #%d: erro ao buscar followups: %s", ticket_id, exc)
 
-        logger.warning("Ticket #%d: data de início não encontrada em nenhuma fonte.", ticket_id)
+        logger.debug("Ticket #%d: data de início não encontrada em nenhuma fonte.", ticket_id)
         return ""
 
     def verificar_tarefa_termo(self, ticket_id: int) -> str:
