@@ -616,13 +616,13 @@ class ClienteGLPI:
         while True:
             params = {"start": start, "limit": PAGE_SIZE}
             url = f"{self.base_url}/Assistance/Ticket"
-            logger.info("Buscando tickets (start=%d)", start)
+            logger.debug("Buscando tickets (start=%d)", start)
             try:
                 response = self._session.get(url, params=params, timeout=HTTP_TIMEOUT)
                 if response.status_code == 401:
                     self._renovar_sessao()
                     response = self._session.get(url, params=params, timeout=HTTP_TIMEOUT)
-                logger.info("HTTP %s | %d bytes", response.status_code, len(response.content))
+                logger.debug("HTTP %s | %d bytes", response.status_code, len(response.content))
 
                 if not response.ok:
                     logger.error("Erro ao buscar tickets: %.300s", response.text)
@@ -682,7 +682,7 @@ class ClienteGLPI:
                     todos[int(tid)] = item
                     ativos_pagina += 1
 
-                logger.info(
+                logger.debug(
                     "start=%d: %d recebidos | %d ativos nas categorias alvo | total=%s",
                     start, len(items), ativos_pagina, total or "?",
                 )
@@ -800,8 +800,7 @@ class ClienteGLPI:
             if not resp:
                 return "Sem tarefa"
 
-            # Log INFO das chaves da primeira tarefa para diagnóstico de campo
-            logger.info(
+            logger.debug(
                 "Ticket #%d: campos da tarefa[0]: %s",
                 ticket_id, list(resp[0].keys()),
             )
@@ -817,7 +816,7 @@ class ClienteGLPI:
                     partes.append(tarefa.get(campo, "") or "")     # fallback no envelope
 
                 texto_limpo = _limpar_html(" ".join(partes))
-                logger.info(
+                logger.debug(
                     "Ticket #%d | tarefa[%d] texto_limpo=%.200r",
                     ticket_id, i, texto_limpo,
                 )
@@ -830,7 +829,7 @@ class ClienteGLPI:
                     except (ValueError, TypeError):
                         state = 0
 
-                    logger.info(
+                    logger.debug(
                         "Ticket #%d: tarefa de termo encontrada (state=%d) → %s",
                         ticket_id, state,
                         "Termo OK" if state >= _GLPI_TASK_STATE_DONE else "Pendente",
@@ -840,7 +839,7 @@ class ClienteGLPI:
                         return "Termo OK"
                     return "Pendente"
 
-            logger.info(
+            logger.debug(
                 "Ticket #%d: tarefa de termo NÃO encontrada entre %d tarefa(s).",
                 ticket_id, len(tarefas),
             )
@@ -1163,7 +1162,7 @@ class SincronizadorDB:
         tmp = hist_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, hist_path)
-        logger.info("Histórico atualizado: %d dia(s) registrado(s).", len(hist))
+        logger.debug("Histórico atualizado: %d dia(s) registrado(s).", len(hist))
 
 
 # ============================================================================
@@ -1225,9 +1224,8 @@ def main() -> None:
 
     while True:
         try:
-            logger.info("--- Iniciando varredura ---")
+            logger.info("Varredura iniciada.")
             chamados = glpi.buscar_chamados_ativos()
-            logger.info("%d chamado(s) ativo(s) retornado(s) pela API.", len(chamados))
             sync.sincronizar(chamados)
         except requests.exceptions.RequestException as exc:
             logger.error("Erro de rede no ciclo de varredura: %s", exc)
