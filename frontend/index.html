@@ -1562,11 +1562,35 @@
   }
 
   // ═══════════════════════════════════════════════════════
+  // Auth — API key gerenciada em localStorage
+  // ═══════════════════════════════════════════════════════
+  const _HUB_KEY_LS = 'hub-api-key';
+  function _hubApiKey() { return localStorage.getItem(_HUB_KEY_LS) || ''; }
+
+  async function apiFetch(url, options = {}) {
+    const headers = { 'X-Hub-API-Key': _hubApiKey(), ...(options.headers || {}) };
+    const resp = await fetch(url, { ...options, headers });
+    if (resp.status === 503) {
+      alert('O servidor não está configurado com uma API Key.\nContate o administrador do Hub.');
+      throw new Error('Servidor não configurado');
+    }
+    if (resp.status === 401) {
+      const key = prompt('Hub de Automações — Autenticação necessária.\n\nInsira a API Key (X-Hub-API-Key):');
+      if (key !== null && key.trim()) {
+        localStorage.setItem(_HUB_KEY_LS, key.trim());
+        window.location.reload();
+      }
+      throw new Error('Não autenticado');
+    }
+    return resp;
+  }
+
+  // ═══════════════════════════════════════════════════════
   // Config (verdanadesk base URL, loaded once on startup)
   // ═══════════════════════════════════════════════════════
   let _vdBase = '';
   const _API = '/hub/automacoes/api';
-  fetch(`${_API}/config`).then(r => r.json()).then(d => { _vdBase = d.verdanadesk_url || ''; }).catch(() => {});
+  apiFetch(`${_API}/config`).then(r => r.json()).then(d => { _vdBase = d.verdanadesk_url || ''; }).catch(() => {});
 
   function ticketUrl(id) {
     return _vdBase ? `${_vdBase}/front/ticket.form.php?id=${encodeURIComponent(id)}` : '#';
@@ -1678,7 +1702,7 @@
     document.getElementById('refresh-icon').classList.add('spin');
 
     try {
-      const resp = await fetch(`${_API}/contratacoes`);
+      const resp = await apiFetch(`${_API}/contratacoes`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       allChamados = Array.isArray(data.chamados) ? data.chamados : [];
@@ -1942,13 +1966,23 @@
     if (!document.getElementById('export-wrap').contains(e.target)) exportMenu.classList.add('hidden');
   });
   document.querySelectorAll('.export-opt').forEach(opt => {
-    opt.addEventListener('click', () => {
+    opt.addEventListener('click', async () => {
       const fmt = opt.dataset.format;
       exportMenu.classList.add('hidden');
-      const rows = applyFilters();
-      console.log(`[export ${fmt}]`, rows.length, 'chamados');
-      // Hook real export here when backend route is ready, e.g.:
-      // window.location = `/api/contratacoes/export?format=${fmt}&filter=${activeStatusFilter}`;
+      try {
+        const resp = await apiFetch(`${_API}/contratacoes/export?formato=${fmt}`);
+        const blob = await resp.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `contratacoes.${fmt}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        if (e.message !== 'Não autenticado' && e.message !== 'Servidor não configurado')
+          console.error('[export]', e);
+      }
     });
   });
 
@@ -2018,7 +2052,7 @@
 
   async function fetchAnaliseUsuarios() {
     try {
-      const res = await fetch(`${_API}/analise-usuarios`);
+      const res = await apiFetch(`${_API}/analise-usuarios`);
       if (!res.ok) return;
       const data = await res.json();
       ['inativos-maquinas', 'cc-divergente', 'multi-responsaveis'].forEach(key => {
@@ -2040,11 +2074,11 @@
     btn.disabled = true;
     lbl.textContent = 'Sincronizando…';
     try {
-      await fetch(`${_API}/analise-usuarios/sync`, { method: 'POST' });
+      await apiFetch(`${_API}/analise-usuarios/sync`, { method: 'POST' });
       if (_usrSyncPoller) clearInterval(_usrSyncPoller);
       _usrSyncPoller = setInterval(async () => {
         try {
-          const st = await (await fetch(`${_API}/analise-usuarios/status`)).json();
+          const st = await (await apiFetch(`${_API}/analise-usuarios/status`)).json();
           if (!st.running) {
             clearInterval(_usrSyncPoller);
             _usrSyncPoller = null;

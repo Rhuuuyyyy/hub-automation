@@ -11,11 +11,27 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Security
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+_KEY_HEADER = APIKeyHeader(name="X-Hub-API-Key", auto_error=False)
+
+
+async def _verificar_key(key: str | None = Security(_KEY_HEADER)) -> None:
+    expected = os.getenv("HUB_API_KEY", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Servidor mal configurado: defina HUB_API_KEY no .env.",
+        )
+    if key != expected:
+        raise HTTPException(status_code=401, detail="API key inválida ou ausente.")
+
+
+router = APIRouter(dependencies=[Depends(_verificar_key)])
 
 _DB_CONTRATACOES = Path("database/contratacoes.json")
 _DB_HISTORICO    = Path("database/historico.json")
